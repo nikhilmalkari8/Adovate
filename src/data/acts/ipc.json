@@ -1,0 +1,54 @@
+{
+  "name": "Indian Penal Code, 1860",
+  "shortName": "IPC",
+  "sections": [
+    {
+      "section": "299",
+      "title": "Culpable homicide",
+      "text": "Whoever causes death by doing an act with the intention of causing death, or with the intention of causing such bodily injury as is likely to cause death, or with the knowledge that he is likely by such act to cause death, commits the offence of culpable homicide.",
+      "citation": "Section 299, Indian Penal Code"
+    },
+    {
+      "section": "300",
+      "title": "Murder",
+      "text": "Except in the cases hereinafter excepted, culpable homicide is murder, if the act by which the death is caused is done with the intention of causing death, or— (2ndly) If it is done with the intention of causing such bodily injury as the offender knows to be likely to cause the death of the person to whom the harm is caused, or— (3rdly) If it is done with the intention of causing bodily injury to any person and the bodily injury intended to be inflicted is sufficient in the ordinary course of nature to cause death, or— (4thly) If the person committing the act knows that it is so imminently dangerous that it must, in all probability, cause death or such bodily injury as is likely to cause death, and commits such act without any excuse for incurring the risk of causing death or such injury as aforesaid.",
+      "citation": "Section 300, Indian Penal Code"
+    },
+    {
+      "section": "302",
+      "title": "Punishment for murder",
+      "text": "Whoever commits murder shall be punished with death, or imprisonment for life, and shall also be liable to fine.",
+      "citation": "Section 302, Indian Penal Code"
+    },
+    {
+      "section": "304",
+      "title": "Punishment for culpable homicide not amounting to murder",
+      "text": "Whoever commits culpable homicide not amounting to murder shall be punished with imprisonment for life, or imprisonment of either description for a term which may extend to ten years, and shall also be liable to fine, if the act by which the death is caused is done with the intention of causing death, or of causing such bodily injury as is likely to cause death; or with imprisonment of either description for a term which may extend to ten years, or with fine, or with both, if the act is done with the knowledge that it is likely to cause death, but without any intention to cause death, or to cause such bodily injury as is likely to cause death.",
+      "citation": "Section 304, Indian Penal Code"
+    },
+    {
+      "section": "307",
+      "title": "Attempt to murder",
+      "text": "Whoever does any act with such intention or knowledge, and under such circumstances that, if he by that act caused death, he would be guilty of murder, shall be punished with imprisonment of either description for a term which may extend to ten years, and shall also be liable to fine; and if hurt is caused to any person by such act, the offender shall be liable either to imprisonment for life, or to such punishment as is hereinbefore mentioned.",
+      "citation": "Section 307, Indian Penal Code"
+    },
+    {
+      "section": "376",
+      "title": "Punishment for rape",
+      "text": "Whoever commits rape shall be punished with rigorous imprisonment of either description for a term which shall not be less than ten years, but which may extend to imprisonment for life, and shall also be liable to fine.",
+      "citation": "Section 376, Indian Penal Code"
+    },
+    {
+      "section": "420",
+      "title": "Cheating and dishonestly inducing delivery of property",
+      "text": "Whoever cheats and thereby dishonestly induces the person deceived to deliver any property to any person, or to make, alter or destroy the whole or any part of a valuable security, or anything which is signed or sealed, and which is capable of being converted into a valuable security, shall be punished with imprisonment of either description for a term which may extend to seven years, and shall also be liable to fine.",
+      "citation": "Section 420, Indian Penal Code"
+    },
+    {
+      "section": "498A",
+      "title": "Husband or relative of husband of a woman subjecting her to cruelty",
+      "text": "Whoever, being the husband or the relative of the husband of a woman, subjects such woman to cruelty shall be punished with imprisonment for a term which may extend to three years and shall also be liable to fine. Explanation.— For the purposes of this section, 'cruelty' means— (a) any wilful conduct which is of such a nature as is likely to drive the woman to commit suicide or to cause grave injury or danger to life, limb or health (whether mental or physical) of the woman; or (b) harassment of the woman where such harassment is with a view to coercing her or any person related to her to meet any unlawful demand for any property or valuable security or is on account of failure by her or any person related to her to meet such demand.",
+      "citation": "Section 498A, Indian Penal Code"
+    }
+  ]
+}
