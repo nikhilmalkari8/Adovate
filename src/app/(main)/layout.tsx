@@ -25,7 +25,7 @@ export default function MainLayout({
             <span className="text-2xl">⚖️</span>
             <span className="text-xl font-bold text-gray-900">Advocate</span>
           </Link>
-          <UserButton afterSignOutUrl="/" />
+          <UserButton />
         </div>
       </header>
 
