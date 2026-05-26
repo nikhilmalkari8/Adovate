@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import ReactMarkdown from "react-markdown";
 
 interface Message {
   id: string;
@@ -170,9 +171,15 @@ export default function AskPage() {
                         : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
                     }`}
                   >
-                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
-                      {message.content}
-                    </p>
+                    {message.role === "user" ? (
+                      <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                        {message.content}
+                      </p>
+                    ) : (
+                      <div className="prose prose-sm max-w-none text-[15px] leading-relaxed prose-headings:font-semibold prose-headings:text-[var(--foreground)] prose-p:my-2 prose-ul:my-2 prose-li:my-0.5 prose-strong:text-[var(--foreground)]">
+                        <ReactMarkdown>{message.content}</ReactMarkdown>
+                      </div>
+                    )}
                     {message.citations && message.citations.length > 0 && (
                       <div className="mt-4 border-t border-white/20 pt-3">
                         <p className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-70">
