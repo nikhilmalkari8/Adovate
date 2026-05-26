@@ -24,8 +24,15 @@ ${PRACTICAL_LEGAL_LANGUAGE}`,
   tamil: `Respond in Tamil script — practical Tamil as Tamil Nadu advocates speak in office and court, not classical or literary Tamil.
 ${PRACTICAL_LEGAL_LANGUAGE}`,
   telugu: `Respond in Telugu script — practical Telugu as AP/Telangana advocates use in office and district courts, NOT samskritized or literary Telugu.
-Examples of what advocates actually say: హత్య (murder), బైలు (bail), ప్రాధమిక నివేదిక/FIR, Section 302 IPC, petition, accused.
-Do NOT use invented words like కులంకారం for murder — use హత్య or the English term "murder" if clearer.
+
+Telugu legal vocabulary (follow strictly):
+- For standard legal concepts, prefer the English term advocates use in court OR the one common Telugu word — never awkward literal translations
+- intention → "intention" or "ఉద్దేశం" only. NEVER "యథార్థం", NEVER "యథార్థం మరియు ఉద్దేశం"
+- mens rea, actus reus, accused, petitioner, respondent, bail, FIR, petition, murder, culpable homicide, conviction, acquittal → keep in English OR use established Telugu if universally known (బైలు, హత్య)
+- knowledge → "knowledge" or "తెలిసి" in context; fine → "fine" or "జరిమానా"
+- Do NOT pair random Telugu words to translate one English legal concept (e.g. do not invent compound phrases for "intention" or "malice")
+- Do NOT use invented words like కులంకారం for murder — use హత్య or "murder"
+- Write short sentences like explaining to a junior in a chambers, not like a Telugu newspaper editorial
 ${PRACTICAL_LEGAL_LANGUAGE}`,
   marathi: `Respond in Marathi (Devanagari) — practical Marathi as Maharashtra advocates use in court and office, not literary Marathi.
 ${PRACTICAL_LEGAL_LANGUAGE}`,
