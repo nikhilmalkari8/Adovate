@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
 
 interface Message {
@@ -25,16 +25,27 @@ export default function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const [streamingContent, setStreamingContent] = useState("");
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const inputRef = useRef<HTMLTextAreaElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const lastScrollTime = useRef(0);
 
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  };
+  const scrollToBottom = useCallback(() => {
+    const now = Date.now();
+    if (now - lastScrollTime.current < 100) return; // Throttle to 100ms
+    lastScrollTime.current = now;
+    
+    if (scrollContainerRef.current) {
+      scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+    }
+  }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+    if (!isLoading) {
+      // Smooth scroll when not streaming
+      messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, isLoading]);
 
   const handleSubmit = async (question: string) => {
     if (!question.trim() || isLoading) return;
@@ -50,8 +61,9 @@ export default function AskPage() {
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
+    setStreamingContent("");
 
-    // Add empty assistant message for streaming
+    // Add placeholder assistant message
     setMessages((prev) => [
       ...prev,
       {
@@ -108,39 +120,37 @@ export default function AskPage() {
                 );
               } else if (data.type === "content") {
                 fullContent += data.content;
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? { ...m, content: fullContent }
-                      : m
-                  )
-                );
+                setStreamingContent(fullContent);
+                scrollToBottom();
               } else if (data.type === "done") {
                 // Parse suggestions from content
-                const lines = fullContent.split("\n");
+                const contentLines = fullContent.split("\n");
                 const suggestions: string[] = [];
                 const answerLines: string[] = [];
 
-                for (const line of lines) {
-                  if (line.trim().startsWith("→")) {
-                    suggestions.push(line.trim().substring(1).trim());
+                for (const contentLine of contentLines) {
+                  if (contentLine.trim().startsWith("→")) {
+                    suggestions.push(contentLine.trim().substring(1).trim());
                   } else {
-                    answerLines.push(line);
+                    answerLines.push(contentLine);
                   }
                 }
 
+                const finalContent = answerLines.join("\n").trim();
+                
                 setMessages((prev) =>
                   prev.map((m) =>
                     m.id === assistantMessageId
                       ? {
                           ...m,
-                          content: answerLines.join("\n").trim(),
+                          content: finalContent,
                           suggestions: suggestions.length > 0 ? suggestions : undefined,
                           isStreaming: false,
                         }
                       : m
                   )
                 );
+                setStreamingContent("");
               }
             } catch {
               // Ignore parse errors
@@ -161,6 +171,7 @@ export default function AskPage() {
             : m
         )
       );
+      setStreamingContent("");
     } finally {
       setIsLoading(false);
     }
@@ -203,7 +214,6 @@ export default function AskPage() {
             <div className="mb-8">
               <form onSubmit={handleFormSubmit} className="relative">
                 <textarea
-                  ref={inputRef}
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
@@ -245,15 +255,17 @@ export default function AskPage() {
       ) : (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 pb-40">
+          <div 
+            ref={scrollContainerRef}
+            className="flex-1 overflow-y-auto px-4 py-6 pb-40"
+          >
             <div className="mx-auto max-w-3xl space-y-6">
-              {messages.map((message, idx) => (
+              {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex animate-slide-up ${
+                  className={`flex ${
                     message.role === "user" ? "justify-end" : "justify-start"
                   }`}
-                  style={{ animationDelay: `${idx * 30}ms` }}
                 >
                   {message.role === "assistant" && (
                     <div className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-sm">
@@ -271,38 +283,39 @@ export default function AskPage() {
                       <p className="text-[15px] leading-relaxed">
                         {message.content}
                       </p>
-                    ) : (
-                      <div className="text-[15px] leading-relaxed">
-                        {message.content ? (
-                          <ReactMarkdown
-                            components={{
-                              h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
-                              h2: ({ children }) => <h2 className="text-lg font-bold mt-4 mb-2">{children}</h2>,
-                              h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2">{children}</h3>,
-                              p: ({ children }) => <p className="my-2">{children}</p>,
-                              ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>,
-                              ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>,
-                              li: ({ children }) => <li>{children}</li>,
-                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                              em: ({ children }) => <em className="italic">{children}</em>,
-                              code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
-                              blockquote: ({ children }) => <blockquote className="border-l-4 border-[var(--primary)] pl-4 my-3 italic text-[var(--muted)]">{children}</blockquote>,
-                            }}
-                          >
-                            {message.content}
-                          </ReactMarkdown>
-                        ) : (
-                          <div className="flex items-center gap-2">
-                            <div className="h-2 w-2 animate-pulse rounded-full bg-[var(--primary)]" />
-                            <span className="text-[var(--muted)]">Thinking...</span>
-                          </div>
+                    ) : message.isStreaming ? (
+                      // Show plain text while streaming (no markdown parsing)
+                      <div className="text-[15px] leading-relaxed whitespace-pre-wrap">
+                        {streamingContent || (
+                          <span className="text-[var(--muted)]">Thinking...</span>
                         )}
-                        {message.isStreaming && message.content && (
-                          <span className="inline-block w-2 h-5 ml-1 bg-[var(--primary)] animate-pulse" />
+                        {streamingContent && (
+                          <span className="inline-block w-0.5 h-5 ml-0.5 bg-[var(--primary)] animate-pulse" />
                         )}
                       </div>
+                    ) : (
+                      // Render markdown when done
+                      <div className="text-[15px] leading-relaxed">
+                        <ReactMarkdown
+                          components={{
+                            h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
+                            h2: ({ children }) => <h2 className="text-lg font-bold mt-4 mb-2">{children}</h2>,
+                            h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2">{children}</h3>,
+                            p: ({ children }) => <p className="my-2">{children}</p>,
+                            ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>,
+                            ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>,
+                            li: ({ children }) => <li>{children}</li>,
+                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                            em: ({ children }) => <em className="italic">{children}</em>,
+                            code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
+                            blockquote: ({ children }) => <blockquote className="border-l-4 border-[var(--primary)] pl-4 my-3 italic text-[var(--muted)]">{children}</blockquote>,
+                          }}
+                        >
+                          {message.content}
+                        </ReactMarkdown>
+                      </div>
                     )}
-                    {message.citations && message.citations.length > 0 && (
+                    {message.citations && message.citations.length > 0 && !message.isStreaming && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         {message.citations.map((citation, idx) => (
                           <span
@@ -320,7 +333,7 @@ export default function AskPage() {
 
               {/* Follow-up Suggestions */}
               {showSuggestions && (
-                <div className="animate-fade-in pl-11">
+                <div className="pl-11">
                   <p className="mb-2 text-xs font-medium text-[var(--muted)]">Continue exploring:</p>
                   <div className="flex flex-wrap gap-2">
                     {lastMessage.suggestions?.map((suggestion, idx) => (
