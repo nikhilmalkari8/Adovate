@@ -2,9 +2,17 @@ import { NextRequest, NextResponse } from 'next/server'
 import { openai, MODEL } from '@/lib/openai'
 import { lookupSection, searchActs } from '@/lib/acts/lookup'
 
+interface Message {
+  role: 'user' | 'assistant'
+  content: string
+}
+
 export async function POST(request: NextRequest) {
   try {
-    const { question } = await request.json()
+    const { question, history = [] } = await request.json() as { 
+      question: string
+      history?: Message[]
+    }
 
     if (!question || typeof question !== 'string') {
       return NextResponse.json(
@@ -36,7 +44,7 @@ export async function POST(request: NextRequest) {
       const section = await lookupSection(actKey, sectionNum)
       
       if (section) {
-        context = `[${section.citation}]\n${section.title}\n\n${section.text}`
+        context = `[Reference: ${section.citation}]\n${section.title}\n\n${section.text}`
         citations.push(section.citation)
       }
     }
@@ -45,48 +53,80 @@ export async function POST(request: NextRequest) {
       const searchResults = await searchActs(question)
       if (searchResults.length > 0) {
         context = searchResults
-          .map((r) => `[${r.citation}]\n${r.title}\n${r.text}`)
+          .map((r) => `[Reference: ${r.citation}]\n${r.title}\n${r.text}`)
           .join('\n\n---\n\n')
         citations.push(...searchResults.map((r) => r.citation))
       }
     }
 
-    const systemPrompt = `You are a knowledgeable legal research assistant specializing in Indian law. You help advocates understand the Constitution of India, Indian Penal Code (IPC), Code of Criminal Procedure (CrPC), Code of Civil Procedure (CPC), and other Indian laws.
+    const systemPrompt = `You are a brilliant legal expert and researcher who loves helping advocates understand Indian law. You're like having a senior advocate friend who explains things clearly and engagingly.
 
-${context ? `Use the following verified legal text as your primary source. Explain it in your own words, provide context, and cite the section/article.
+Your personality:
+- Warm, helpful, and genuinely interested in the question
+- You explain complex legal concepts like you're having a conversation over chai
+- You're thorough but not boring - you know when to be concise and when to elaborate
+- You use examples and analogies to make things click
+- You're honest about uncertainty - if something is debatable or you're not 100% sure, you say so naturally
 
-VERIFIED LEGAL TEXT:
+${context ? `I found this relevant legal text for reference:
+
 ${context}
 
-Instructions:
-- Explain the provision in simple, clear language
-- Add relevant context (purpose, importance, practical application)
-- Always cite the specific section/article
-- Don't just repeat the text - explain and elaborate` : 'Answer based on your knowledge of Indian law. If unsure, say so.'}
+Use this as your source but explain it naturally - don't just recite it. Add your insights about why this matters, how it's applied in practice, and any important nuances.` : ''}
 
-Guidelines:
-- Be conversational yet professional
-- Explain legal concepts in simple terms any advocate can understand
-- If you're not certain about something, clearly say so
-- For case law citations, note this is beta - always verify independently
+How you respond:
+- Talk naturally, like a knowledgeable colleague would
+- Structure your response in a way that's easy to follow, but don't be overly formal with headers unless it genuinely helps
+- When citing sections/articles, weave them into your explanation naturally
+- If the question is simple, give a simple answer - don't over-explain
+- If it's complex, break it down step by step
+- Feel free to mention related concepts the person might want to explore
 
-DISCLAIMER: This is AI-assisted research. Always verify information from official sources.`
+Remember: The advocate asking you is smart - they just need clarity on this specific point. Respect their intelligence while being genuinely helpful.
+
+At the end of your response, suggest 2-3 natural follow-up questions they might want to ask (format them on separate lines starting with "→").`
+
+    const messages: { role: 'system' | 'user' | 'assistant', content: string }[] = [
+      { role: 'system', content: systemPrompt },
+    ]
+
+    // Add conversation history for context (last 6 messages max)
+    const recentHistory = history.slice(-6)
+    for (const msg of recentHistory) {
+      messages.push({ role: msg.role, content: msg.content })
+    }
+
+    // Add current question
+    messages.push({ role: 'user', content: question })
 
     const completion = await openai.chat.completions.create({
       model: MODEL,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        { role: 'user', content: question },
-      ],
-      temperature: 0.6,
-      max_tokens: 1500,
+      messages,
+      temperature: 0.75,
+      max_tokens: 2000,
     })
 
-    const answer = completion.choices[0]?.message?.content || 'Unable to generate response.'
+    const fullResponse = completion.choices[0]?.message?.content || 'Unable to generate response.'
+    
+    // Extract follow-up suggestions if present
+    const lines = fullResponse.split('\n')
+    const suggestions: string[] = []
+    const answerLines: string[] = []
+    
+    for (const line of lines) {
+      if (line.trim().startsWith('→')) {
+        suggestions.push(line.trim().substring(1).trim())
+      } else {
+        answerLines.push(line)
+      }
+    }
+
+    const answer = answerLines.join('\n').trim()
 
     return NextResponse.json({
       answer,
       citations: citations.length > 0 ? citations : undefined,
+      suggestions: suggestions.length > 0 ? suggestions : undefined,
     })
   } catch (error) {
     console.error('Research API error:', error)

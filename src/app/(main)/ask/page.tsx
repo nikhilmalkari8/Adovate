@@ -8,15 +8,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   citations?: string[];
+  suggestions?: string[];
 }
 
 const sampleQuestions = [
-  { label: "Article 21", query: "What does Article 21 of the Constitution say?" },
-  { label: "Section 302 IPC", query: "Explain Section 302 of IPC" },
-  { label: "Bail Process", query: "What is the procedure for bail in criminal cases?" },
-  { label: "Writ Petition", query: "How to file a writ petition?" },
-  { label: "Section 498A", query: "Explain Section 498A IPC" },
-  { label: "Fundamental Rights", query: "What are the fundamental rights in India?" },
+  { label: "Article 21", query: "What does Article 21 of the Constitution say and why is it so important?" },
+  { label: "Section 302 IPC", query: "Explain Section 302 of IPC - when exactly does murder apply?" },
+  { label: "Bail Process", query: "Walk me through the bail process in criminal cases" },
+  { label: "Writ Petition", query: "How do I file a writ petition and when should I use one?" },
+  { label: "Section 498A", query: "What is Section 498A and how is it commonly used?" },
+  { label: "Fundamental Rights", query: "Give me an overview of fundamental rights in India" },
 ];
 
 export default function AskPage() {
@@ -48,10 +49,19 @@ export default function AskPage() {
     setIsLoading(true);
 
     try {
+      // Prepare history for context
+      const history = messages.map((m) => ({
+        role: m.role,
+        content: m.content,
+      }));
+
       const response = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question: userMessage.content }),
+        body: JSON.stringify({ 
+          question: userMessage.content,
+          history,
+        }),
       });
 
       const data = await response.json();
@@ -59,8 +69,9 @@ export default function AskPage() {
       const assistantMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: "assistant",
-        content: data.answer || "Sorry, I could not find an answer.",
+        content: data.answer || "I couldn't process that. Could you try rephrasing?",
         citations: data.citations,
+        suggestions: data.suggestions,
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
@@ -70,7 +81,7 @@ export default function AskPage() {
         {
           id: (Date.now() + 1).toString(),
           role: "assistant",
-          content: "An error occurred. Please try again.",
+          content: "Something went wrong. Please try again.",
         },
       ]);
     } finally {
@@ -90,6 +101,9 @@ export default function AskPage() {
     }
   };
 
+  const lastMessage = messages[messages.length - 1];
+  const showSuggestions = lastMessage?.role === "assistant" && lastMessage?.suggestions?.length;
+
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col bg-[var(--background)]">
       {messages.length === 0 ? (
@@ -101,10 +115,10 @@ export default function AskPage() {
                 ⚖️
               </div>
               <h1 className="mb-2 text-2xl font-bold text-[var(--foreground)]">
-                Legal Research Assistant
+                Ask me anything about Indian law
               </h1>
               <p className="text-[var(--muted)]">
-                Ask any question about Indian law, Constitution, IPC, CrPC, and more
+                Constitution, IPC, CrPC, procedures, case strategies - I&apos;m here to help
               </p>
             </div>
 
@@ -116,7 +130,7 @@ export default function AskPage() {
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
                   onKeyDown={handleKeyDown}
-                  placeholder="Ask a legal question..."
+                  placeholder="What would you like to know?"
                   rows={3}
                   className="w-full resize-none rounded-2xl border-2 border-[var(--border)] bg-[var(--surface)] px-5 py-4 pr-14 text-lg text-[var(--foreground)] placeholder-[var(--muted)] shadow-sm transition-all focus:border-[var(--primary)] focus:outline-none focus:ring-4 focus:ring-[var(--primary)]/10"
                 />
@@ -135,7 +149,7 @@ export default function AskPage() {
             {/* Sample Questions */}
             <div>
               <p className="mb-3 text-center text-sm font-medium text-[var(--muted)]">
-                Try these questions
+                Or try one of these
               </p>
               <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
                 {sampleQuestions.map((q, idx) => (
@@ -154,7 +168,7 @@ export default function AskPage() {
       ) : (
         <>
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-6 pb-32">
+          <div className="flex-1 overflow-y-auto px-4 py-6 pb-40">
             <div className="mx-auto max-w-3xl space-y-6">
               {messages.map((message, idx) => (
                 <div
@@ -162,33 +176,39 @@ export default function AskPage() {
                   className={`flex animate-slide-up ${
                     message.role === "user" ? "justify-end" : "justify-start"
                   }`}
-                  style={{ animationDelay: `${idx * 50}ms` }}
+                  style={{ animationDelay: `${idx * 30}ms` }}
                 >
+                  {message.role === "assistant" && (
+                    <div className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-sm">
+                      ⚖️
+                    </div>
+                  )}
                   <div
-                    className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-sm ${
+                    className={`max-w-[85%] rounded-2xl px-5 py-4 ${
                       message.role === "user"
-                        ? "bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white"
-                        : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+                        ? "bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white shadow-md"
+                        : "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
                     }`}
                   >
                     {message.role === "user" ? (
-                      <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                      <p className="text-[15px] leading-relaxed">
                         {message.content}
                       </p>
                     ) : (
-                      <div className="markdown-content text-[15px] leading-relaxed">
+                      <div className="text-[15px] leading-relaxed">
                         <ReactMarkdown
                           components={{
                             h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
                             h2: ({ children }) => <h2 className="text-lg font-bold mt-4 mb-2">{children}</h2>,
-                            h3: ({ children }) => <h3 className="text-base font-bold mt-3 mb-2">{children}</h3>,
+                            h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2">{children}</h3>,
                             p: ({ children }) => <p className="my-2">{children}</p>,
                             ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>,
                             ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>,
-                            li: ({ children }) => <li className="ml-1">{children}</li>,
+                            li: ({ children }) => <li>{children}</li>,
                             strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                             em: ({ children }) => <em className="italic">{children}</em>,
-                            code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm">{children}</code>,
+                            code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
+                            blockquote: ({ children }) => <blockquote className="border-l-4 border-[var(--primary)] pl-4 my-3 italic text-[var(--muted)]">{children}</blockquote>,
                           }}
                         >
                           {message.content}
@@ -196,35 +216,52 @@ export default function AskPage() {
                       </div>
                     )}
                     {message.citations && message.citations.length > 0 && (
-                      <div className="mt-4 border-t border-white/20 pt-3">
-                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-70">
-                          References
-                        </p>
-                        <div className="flex flex-wrap gap-2">
-                          {message.citations.map((citation, idx) => (
-                            <span
-                              key={idx}
-                              className="inline-flex items-center rounded-lg bg-[var(--accent)]/20 px-2.5 py-1 text-xs font-medium text-[var(--accent)]"
-                            >
-                              📜 {citation}
-                            </span>
-                          ))}
-                        </div>
+                      <div className="mt-4 flex flex-wrap gap-2">
+                        {message.citations.map((citation, idx) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center rounded-full bg-[var(--accent)]/15 px-3 py-1 text-xs font-medium text-[var(--accent)]"
+                          >
+                            📜 {citation}
+                          </span>
+                        ))}
                       </div>
                     )}
                   </div>
                 </div>
               ))}
+
+              {/* Follow-up Suggestions */}
+              {showSuggestions && !isLoading && (
+                <div className="animate-fade-in pl-11">
+                  <p className="mb-2 text-xs font-medium text-[var(--muted)]">Continue exploring:</p>
+                  <div className="flex flex-wrap gap-2">
+                    {lastMessage.suggestions?.map((suggestion, idx) => (
+                      <button
+                        key={idx}
+                        onClick={() => handleSubmit(suggestion)}
+                        className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)] transition-all hover:border-[var(--primary)] hover:bg-[var(--primary)]/5"
+                      >
+                        {suggestion}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               {isLoading && (
                 <div className="flex justify-start animate-fade-in">
-                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 shadow-sm">
+                  <div className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-sm">
+                    ⚖️
+                  </div>
+                  <div className="rounded-2xl bg-[var(--surface)] px-5 py-4 shadow-sm">
                     <div className="flex items-center gap-3">
-                      <div className="flex space-x-1.5">
-                        <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "0ms" }} />
-                        <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "150ms" }} />
-                        <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "300ms" }} />
+                      <div className="flex space-x-1">
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "0ms" }} />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "150ms" }} />
+                        <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "300ms" }} />
                       </div>
-                      <span className="text-sm text-[var(--muted)]">Researching...</span>
+                      <span className="text-sm text-[var(--muted)]">Thinking...</span>
                     </div>
                   </div>
                 </div>
@@ -240,7 +277,7 @@ export default function AskPage() {
                 type="text"
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask another question..."
+                placeholder="Ask a follow-up..."
                 className="flex-1 rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[var(--foreground)] placeholder-[var(--muted)] transition-all focus:border-[var(--primary)] focus:outline-none focus:ring-4 focus:ring-[var(--primary)]/10"
                 disabled={isLoading}
               />
