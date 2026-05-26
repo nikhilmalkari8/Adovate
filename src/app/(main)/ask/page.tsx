@@ -6,10 +6,12 @@ import { SourceBadge } from "@/components/SourceBadge";
 import {
   getUserPreferences,
   setUserPreferences,
-  EXPLANATION_STYLE_OPTIONS,
   ANSWER_LANGUAGE_OPTIONS,
+  EXPLANATION_STYLE_OPTIONS,
   type UserPreferences,
 } from "@/lib/user-preferences";
+import { isEnglishLanguage } from "@/lib/language-utils";
+import { LanguageSettingsPanel } from "@/components/LanguageSettingsPanel";
 import {
   getChatSessions,
   getActiveSessionId,
@@ -284,13 +286,13 @@ export default function AskPage() {
     !lastMessage?.isStreaming &&
     lastMessage?.suggestions?.length;
 
-  const styleLabel =
-    EXPLANATION_STYLE_OPTIONS.find((o) => o.value === preferences.explanationStyle)?.label ??
-    "Standard";
-
   const languageLabel =
     ANSWER_LANGUAGE_OPTIONS.find((o) => o.value === preferences.answerLanguage)?.label ??
     "English";
+
+  const settingsSummary = isEnglishLanguage(preferences.answerLanguage)
+    ? `${EXPLANATION_STYLE_OPTIONS.find((o) => o.value === preferences.explanationStyle)?.label} · English`
+    : languageLabel.split("(")[0].trim();
 
   const updatePreferences = (partial: Partial<UserPreferences>) => {
     setPreferences(setUserPreferences(partial));
@@ -299,70 +301,66 @@ export default function AskPage() {
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col bg-[var(--background)]">
       {/* Toolbar */}
-      <div className="flex flex-col gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <button
-              onClick={() => setShowHistory(true)}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-gray-100"
-            >
-              📋 History
-            </button>
-            <button
-              onClick={handleNewChat}
-              className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--primary)] hover:bg-[var(--primary)]/5"
-            >
-              + New chat
-            </button>
-          </div>
+      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2.5">
+        <div className="flex items-center gap-1">
           <button
-            onClick={() => setShowSettings((s) => !s)}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-gray-100"
+            onClick={() => setShowHistory(true)}
+            className="rounded-xl px-3 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-gray-100"
           >
-            ⚙️ {styleLabel} · {languageLabel.split(" ")[0]}
+            History
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="rounded-xl px-3 py-2 text-sm font-medium text-[var(--primary)] transition-colors hover:bg-[var(--primary)]/5"
+          >
+            New
           </button>
         </div>
-
-        {showSettings && (
-          <div className="animate-fade-in rounded-xl border border-[var(--border)] bg-gray-50 p-3">
-            <p className="mb-2 text-xs font-medium text-[var(--muted)]">Explanation style</p>
-            <div className="flex flex-wrap gap-2">
-              {EXPLANATION_STYLE_OPTIONS.map((opt) => (
-                <button
-                  key={opt.value}
-                  onClick={() => updatePreferences({ explanationStyle: opt.value })}
-                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
-                    preferences.explanationStyle === opt.value
-                      ? "bg-[var(--primary)] text-white"
-                      : "bg-white text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--primary)]"
-                  }`}
-                >
-                  {opt.label}
-                </button>
-              ))}
-            </div>
-            <p className="mb-2 mt-3 text-xs font-medium text-[var(--muted)]">Answer language</p>
-            <select
-              value={preferences.answerLanguage}
-              onChange={(e) =>
-                updatePreferences({
-                  answerLanguage: e.target.value as UserPreferences["answerLanguage"],
-                })
-              }
-              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
-            >
-              {ANSWER_LANGUAGE_OPTIONS.map((lang) => (
-                <option key={lang.value} value={lang.value}>
-                  {lang.label}
-                </option>
-              ))}
-            </select>
-            <p className="mt-2 text-xs text-[var(--muted)]">
-              Start a new question after changing settings to see the difference clearly.
-            </p>
-          </div>
-        )}
+        <button
+          onClick={() => setShowSettings(true)}
+          className="flex items-center gap-2 rounded-full bg-gray-100 px-4 py-2 text-sm font-medium text-[var(--foreground)] transition-colors hover:bg-gray-200"
+        >
+          <span className="flex h-5 w-5 items-center justify-center rounded-full bg-[var(--primary)] text-[10px] text-white">
+            Aa
+          </span>
+          {settingsSummary}
+        </button>
       </div>
+
+      {/* Settings sheet */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-end justify-center sm:items-center">
+          <div
+            className="absolute inset-0 bg-black/40 backdrop-blur-sm"
+            onClick={() => setShowSettings(false)}
+          />
+          <div className="relative w-full max-w-lg animate-slide-up rounded-t-3xl bg-[var(--surface)] p-6 shadow-2xl sm:rounded-3xl">
+            <div className="mb-1 flex justify-center sm:hidden">
+              <div className="h-1 w-10 rounded-full bg-gray-300" />
+            </div>
+            <div className="mb-5 flex items-center justify-between">
+              <h2 className="text-lg font-semibold text-[var(--foreground)]">Language</h2>
+              <button
+                onClick={() => setShowSettings(false)}
+                className="rounded-full p-2 text-[var(--muted)] hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+            <LanguageSettingsPanel
+              preferences={preferences}
+              onChange={updatePreferences}
+              compact
+            />
+            <button
+              onClick={() => setShowSettings(false)}
+              className="mt-6 w-full rounded-xl bg-[var(--primary)] py-3.5 text-sm font-semibold text-white"
+            >
+              Done
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* History drawer */}
       {showHistory && (

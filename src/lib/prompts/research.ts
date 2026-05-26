@@ -1,4 +1,5 @@
 import type { AnswerLanguage, ExplanationStyle } from '@/lib/user-preferences'
+import { isEnglishLanguage, REGIONAL_COURT_STYLE } from '@/lib/language-utils'
 
 /** How advocates actually speak/write — not literary, not random English mix */
 const PRACTICAL_LEGAL_LANGUAGE = `
@@ -70,14 +71,17 @@ export function buildResearchSystemPrompt(options: {
 }): string {
   const { context, explanationStyle, answerLanguage, verified } = options
 
-  const inputLanguageNote =
-    answerLanguage !== 'english'
+  const styleBlock = isEnglishLanguage(answerLanguage)
+    ? STYLE_INSTRUCTIONS[explanationStyle]
+    : REGIONAL_COURT_STYLE
+
+  const inputLanguageNote = !isEnglishLanguage(answerLanguage)
       ? 'The user may ask in English or any language — always respond in the answer language above, not in the language of the question.'
       : ''
 
   return `You are a brilliant legal expert helping Indian advocates with research. You're like a senior colleague — warm, clear, and practical.
 
-${STYLE_INSTRUCTIONS[explanationStyle]}
+${styleBlock}
 
 ${LANGUAGE_INSTRUCTIONS[answerLanguage]}
 ${inputLanguageNote}
