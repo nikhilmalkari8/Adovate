@@ -2,13 +2,25 @@
 
 import { useState, useRef, useEffect, useCallback } from "react";
 import ReactMarkdown from "react-markdown";
+import { SourceBadge } from "@/components/SourceBadge";
+import {
+  getUserPreferences,
+  EXPLANATION_STYLE_OPTIONS,
+  type UserPreferences,
+} from "@/lib/user-preferences";
+import {
+  getChatSessions,
+  getActiveSessionId,
+  setActiveSessionId,
+  createChatSession,
+  saveChatSession,
+  deleteChatSession,
+  startNewChat,
+  type ChatSession,
+  type StoredMessage,
+} from "@/lib/chat-history";
 
-interface Message {
-  id: string;
-  role: "user" | "assistant";
-  content: string;
-  citations?: string[];
-  suggestions?: string[];
+interface Message extends StoredMessage {
   isStreaming?: boolean;
 }
 
@@ -23,6 +35,10 @@ const sampleQuestions = [
 
 export default function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
+  const [preferences, setPreferences] = useState<UserPreferences>(getUserPreferences());
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [streamingContent, setStreamingContent] = useState("");
@@ -30,11 +46,52 @@ export default function AskPage() {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const lastScrollTime = useRef(0);
 
+  const refreshSessions = useCallback(() => {
+    setSessions(getChatSessions());
+  }, []);
+
+  useEffect(() => {
+    refreshSessions();
+    const activeId = getActiveSessionId();
+    if (activeId) {
+      const session = getChatSessions().find((s) => s.id === activeId);
+      if (session) {
+        setSessionId(session.id);
+        setMessages(session.messages);
+      }
+    }
+
+    const onPrefs = (e: Event) => {
+      setPreferences((e as CustomEvent<UserPreferences>).detail);
+    };
+    window.addEventListener("nyay-preferences-updated", onPrefs);
+    return () => window.removeEventListener("nyay-preferences-updated", onPrefs);
+  }, [refreshSessions]);
+
+  const persistSession = useCallback(
+    (id: string, msgs: Message[], title?: string) => {
+      const existing = getChatSessions().find((s) => s.id === id);
+      const firstUser = msgs.find((m) => m.role === "user");
+      saveChatSession({
+        id,
+        title:
+          title ||
+          existing?.title ||
+          (firstUser?.content.slice(0, 60) ?? "New conversation") +
+            (firstUser && firstUser.content.length > 60 ? "…" : ""),
+        messages: msgs.filter((m) => !m.isStreaming).map(({ isStreaming: _, ...m }) => m),
+        createdAt: existing?.createdAt ?? new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      });
+      refreshSessions();
+    },
+    [refreshSessions]
+  );
+
   const scrollToBottom = useCallback(() => {
     const now = Date.now();
-    if (now - lastScrollTime.current < 100) return; // Throttle to 100ms
+    if (now - lastScrollTime.current < 100) return;
     lastScrollTime.current = now;
-    
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
     }
@@ -42,13 +99,40 @@ export default function AskPage() {
 
   useEffect(() => {
     if (!isLoading) {
-      // Smooth scroll when not streaming
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
   }, [messages, isLoading]);
 
+  const handleNewChat = () => {
+    startNewChat();
+    setSessionId(null);
+    setMessages([]);
+    setShowHistory(false);
+  };
+
+  const loadSession = (session: ChatSession) => {
+    setSessionId(session.id);
+    setActiveSessionId(session.id);
+    setMessages(session.messages);
+    setShowHistory(false);
+  };
+
+  const handleDeleteSession = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    deleteChatSession(id);
+    refreshSessions();
+    if (sessionId === id) handleNewChat();
+  };
+
   const handleSubmit = async (question: string) => {
     if (!question.trim() || isLoading) return;
+
+    let currentSessionId = sessionId;
+    if (!currentSessionId) {
+      const session = createChatSession(question.trim());
+      currentSessionId = session.id;
+      setSessionId(session.id);
+    }
 
     const userMessage: Message = {
       id: Date.now().toString(),
@@ -57,22 +141,15 @@ export default function AskPage() {
     };
 
     const assistantMessageId = (Date.now() + 1).toString();
-    
-    setMessages((prev) => [...prev, userMessage]);
+
+    setMessages((prev) => [
+      ...prev,
+      userMessage,
+      { id: assistantMessageId, role: "assistant" as const, content: "", isStreaming: true },
+    ]);
     setInput("");
     setIsLoading(true);
     setStreamingContent("");
-
-    // Add placeholder assistant message
-    setMessages((prev) => [
-      ...prev,
-      {
-        id: assistantMessageId,
-        role: "assistant",
-        content: "",
-        isStreaming: true,
-      },
-    ]);
 
     try {
       const history = messages.map((m) => ({
@@ -80,13 +157,17 @@ export default function AskPage() {
         content: m.content,
       }));
 
+      const prefs = getUserPreferences();
+
       const response = await fetch("/api/research", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ 
+        body: JSON.stringify({
           question: userMessage.content,
           history,
           stream: true,
+          explanationStyle: prefs.explanationStyle,
+          answerLanguage: prefs.answerLanguage,
         }),
       });
 
@@ -97,7 +178,8 @@ export default function AskPage() {
 
       const decoder = new TextDecoder();
       let fullContent = "";
-      let citations: string[] = [];
+      let citations: string[] | undefined;
+      let sourceType: "verified" | "general" = "general";
 
       while (true) {
         const { done, value } = await reader.read();
@@ -110,12 +192,15 @@ export default function AskPage() {
           if (line.startsWith("data: ")) {
             try {
               const data = JSON.parse(line.slice(6));
-              
-              if (data.type === "citations") {
+
+              if (data.type === "meta") {
+                sourceType = data.sourceType;
                 citations = data.citations;
                 setMessages((prev) =>
                   prev.map((m) =>
-                    m.id === assistantMessageId ? { ...m, citations } : m
+                    m.id === assistantMessageId
+                      ? { ...m, sourceType, citations }
+                      : m
                   )
                 );
               } else if (data.type === "content") {
@@ -123,7 +208,6 @@ export default function AskPage() {
                 setStreamingContent(fullContent);
                 scrollToBottom();
               } else if (data.type === "done") {
-                // Parse suggestions from content
                 const contentLines = fullContent.split("\n");
                 const suggestions: string[] = [];
                 const answerLines: string[] = [];
@@ -137,38 +221,40 @@ export default function AskPage() {
                 }
 
                 const finalContent = answerLines.join("\n").trim();
-                
-                setMessages((prev) =>
-                  prev.map((m) =>
-                    m.id === assistantMessageId
-                      ? {
-                          ...m,
-                          content: finalContent,
-                          suggestions: suggestions.length > 0 ? suggestions : undefined,
-                          isStreaming: false,
-                        }
-                      : m
-                  )
-                );
+                const assistantMsg: Message = {
+                  id: assistantMessageId,
+                  role: "assistant",
+                  content: finalContent,
+                  suggestions: suggestions.length > 0 ? suggestions : undefined,
+                  sourceType,
+                  citations,
+                };
+
+                setMessages((prev) => {
+                  const withoutPlaceholder = prev.filter((m) => m.id !== assistantMessageId);
+                  const completed = [...withoutPlaceholder, assistantMsg];
+                  if (currentSessionId) persistSession(currentSessionId, completed);
+                  return completed;
+                });
                 setStreamingContent("");
               }
             } catch {
-              // Ignore parse errors
+              // ignore
             }
           }
         }
       }
     } catch (error) {
       console.error("Stream error:", error);
+      const errorMsg: Message = {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "Something went wrong. Please try again.",
+        sourceType: "general",
+      };
       setMessages((prev) =>
         prev.map((m) =>
-          m.id === assistantMessageId
-            ? {
-                ...m,
-                content: "Something went wrong. Please try again.",
-                isStreaming: false,
-              }
-            : m
+          m.id === assistantMessageId ? { ...errorMsg, isStreaming: false } : m
         )
       );
       setStreamingContent("");
@@ -190,14 +276,95 @@ export default function AskPage() {
   };
 
   const lastMessage = messages[messages.length - 1];
-  const showSuggestions = lastMessage?.role === "assistant" && !lastMessage?.isStreaming && lastMessage?.suggestions?.length;
+  const showSuggestions =
+    lastMessage?.role === "assistant" &&
+    !lastMessage?.isStreaming &&
+    lastMessage?.suggestions?.length;
+
+  const styleLabel =
+    EXPLANATION_STYLE_OPTIONS.find((o) => o.value === preferences.explanationStyle)?.label ??
+    "Standard";
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col bg-[var(--background)]">
+      {/* Toolbar */}
+      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowHistory(true)}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-gray-100"
+          >
+            📋 History
+          </button>
+          <button
+            onClick={handleNewChat}
+            className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--primary)] hover:bg-[var(--primary)]/5"
+          >
+            + New chat
+          </button>
+        </div>
+        <span className="text-xs text-[var(--muted)]">
+          Style: {styleLabel} · Change in Profile
+        </span>
+      </div>
+
+      {/* History drawer */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 flex">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => setShowHistory(false)}
+          />
+          <div className="relative ml-auto flex h-full w-full max-w-sm flex-col bg-[var(--surface)] shadow-xl">
+            <div className="flex items-center justify-between border-b p-4">
+              <h2 className="font-semibold text-[var(--foreground)]">Chat History</h2>
+              <button
+                onClick={() => setShowHistory(false)}
+                className="rounded-lg p-2 hover:bg-gray-100"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="flex-1 overflow-y-auto p-2">
+              {sessions.length === 0 ? (
+                <p className="p-4 text-center text-sm text-[var(--muted)]">
+                  No past conversations yet
+                </p>
+              ) : (
+                sessions.map((session) => (
+                  <button
+                    key={session.id}
+                    onClick={() => loadSession(session)}
+                    className={`mb-1 flex w-full items-start justify-between rounded-xl p-3 text-left transition-colors hover:bg-gray-50 ${
+                      sessionId === session.id ? "bg-[var(--primary)]/10" : ""
+                    }`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-medium text-[var(--foreground)]">
+                        {session.title}
+                      </p>
+                      <p className="text-xs text-[var(--muted)]">
+                        {new Date(session.updatedAt).toLocaleDateString()} ·{" "}
+                        {session.messages.length} messages
+                      </p>
+                    </div>
+                    <button
+                      onClick={(e) => handleDeleteSession(session.id, e)}
+                      className="ml-2 shrink-0 rounded p-1 text-xs text-red-500 hover:bg-red-50"
+                    >
+                      Delete
+                    </button>
+                  </button>
+                ))
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {messages.length === 0 ? (
         <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 animate-fade-in">
           <div className="w-full max-w-2xl">
-            {/* Hero Section */}
             <div className="mb-8 text-center">
               <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-4xl shadow-lg">
                 ⚖️
@@ -206,11 +373,10 @@ export default function AskPage() {
                 Ask me anything about Indian law
               </h1>
               <p className="text-[var(--muted)]">
-                Constitution, IPC, CrPC, procedures, case strategies - I&apos;m here to help
+                Constitution, IPC, CrPC, procedures, case strategies
               </p>
             </div>
 
-            {/* Input Section */}
             <div className="mb-8">
               <form onSubmit={handleFormSubmit} className="relative">
                 <textarea
@@ -224,7 +390,7 @@ export default function AskPage() {
                 <button
                   type="submit"
                   disabled={isLoading || !input.trim()}
-                  className="absolute bottom-4 right-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)] text-white shadow-md transition-all hover:bg-[var(--primary-dark)] hover:shadow-lg disabled:bg-gray-300 disabled:shadow-none"
+                  className="absolute bottom-4 right-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)] text-white shadow-md transition-all hover:bg-[var(--primary-dark)] disabled:bg-gray-300"
                 >
                   <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
@@ -233,7 +399,6 @@ export default function AskPage() {
               </form>
             </div>
 
-            {/* Sample Questions */}
             <div>
               <p className="mb-3 text-center text-sm font-medium text-[var(--muted)]">
                 Or try one of these
@@ -243,7 +408,7 @@ export default function AskPage() {
                   <button
                     key={idx}
                     onClick={() => handleSubmit(q.query)}
-                    className="rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--foreground)] shadow-sm transition-all hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 hover:shadow-md active:scale-[0.98]"
+                    className="rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--foreground)] shadow-sm transition-all hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 active:scale-[0.98]"
                   >
                     {q.label}
                   </button>
@@ -254,18 +419,12 @@ export default function AskPage() {
         </div>
       ) : (
         <>
-          {/* Messages */}
-          <div 
-            ref={scrollContainerRef}
-            className="flex-1 overflow-y-auto px-4 py-6 pb-40"
-          >
+          <div ref={scrollContainerRef} className="flex-1 overflow-y-auto px-4 py-6 pb-40">
             <div className="mx-auto max-w-3xl space-y-6">
               {messages.map((message) => (
                 <div
                   key={message.id}
-                  className={`flex ${
-                    message.role === "user" ? "justify-end" : "justify-start"
-                  }`}
+                  className={`flex ${message.role === "user" ? "justify-end" : "justify-start"}`}
                 >
                   {message.role === "assistant" && (
                     <div className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-sm">
@@ -279,12 +438,15 @@ export default function AskPage() {
                         : "bg-[var(--surface)] text-[var(--foreground)] shadow-sm"
                     }`}
                   >
+                    {message.role === "assistant" && !message.isStreaming && message.sourceType && (
+                      <div className="mb-3">
+                        <SourceBadge sourceType={message.sourceType} />
+                      </div>
+                    )}
+
                     {message.role === "user" ? (
-                      <p className="text-[15px] leading-relaxed">
-                        {message.content}
-                      </p>
+                      <p className="text-[15px] leading-relaxed">{message.content}</p>
                     ) : message.isStreaming ? (
-                      // Show plain text while streaming (no markdown parsing)
                       <div className="text-[15px] leading-relaxed whitespace-pre-wrap">
                         {streamingContent || (
                           <span className="text-[var(--muted)]">Thinking...</span>
@@ -294,7 +456,6 @@ export default function AskPage() {
                         )}
                       </div>
                     ) : (
-                      // Render markdown when done
                       <div className="text-[15px] leading-relaxed">
                         <ReactMarkdown
                           components={{
@@ -307,14 +468,13 @@ export default function AskPage() {
                             li: ({ children }) => <li>{children}</li>,
                             strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
                             em: ({ children }) => <em className="italic">{children}</em>,
-                            code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
-                            blockquote: ({ children }) => <blockquote className="border-l-4 border-[var(--primary)] pl-4 my-3 italic text-[var(--muted)]">{children}</blockquote>,
                           }}
                         >
                           {message.content}
                         </ReactMarkdown>
                       </div>
                     )}
+
                     {message.citations && message.citations.length > 0 && !message.isStreaming && (
                       <div className="mt-4 flex flex-wrap gap-2">
                         {message.citations.map((citation, idx) => (
@@ -331,7 +491,6 @@ export default function AskPage() {
                 </div>
               ))}
 
-              {/* Follow-up Suggestions */}
               {showSuggestions && (
                 <div className="pl-11">
                   <p className="mb-2 text-xs font-medium text-[var(--muted)]">Continue exploring:</p>
@@ -340,7 +499,7 @@ export default function AskPage() {
                       <button
                         key={idx}
                         onClick={() => handleSubmit(suggestion)}
-                        className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm text-[var(--foreground)] transition-all hover:border-[var(--primary)] hover:bg-[var(--primary)]/5"
+                        className="rounded-full border border-[var(--border)] bg-[var(--surface)] px-4 py-2 text-sm transition-all hover:border-[var(--primary)]"
                       >
                         {suggestion}
                       </button>
@@ -353,7 +512,6 @@ export default function AskPage() {
             </div>
           </div>
 
-          {/* Input Bar */}
           <div className="fixed bottom-16 left-0 right-0 border-t border-[var(--border)] bg-[var(--surface)]/95 p-4 backdrop-blur-lg">
             <form onSubmit={handleFormSubmit} className="mx-auto flex max-w-3xl gap-3">
               <input
@@ -361,13 +519,13 @@ export default function AskPage() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Ask a follow-up..."
-                className="flex-1 rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[var(--foreground)] placeholder-[var(--muted)] transition-all focus:border-[var(--primary)] focus:outline-none focus:ring-4 focus:ring-[var(--primary)]/10"
+                className="flex-1 rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 focus:border-[var(--primary)] focus:outline-none focus:ring-4 focus:ring-[var(--primary)]/10"
                 disabled={isLoading}
               />
               <button
                 type="submit"
                 disabled={isLoading || !input.trim()}
-                className="flex items-center justify-center rounded-xl bg-[var(--primary)] px-6 py-3.5 font-semibold text-white shadow-md transition-all hover:bg-[var(--primary-dark)] hover:shadow-lg disabled:bg-gray-300 disabled:shadow-none"
+                className="rounded-xl bg-[var(--primary)] px-6 py-3.5 text-white shadow-md hover:bg-[var(--primary-dark)] disabled:bg-gray-300"
               >
                 <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
