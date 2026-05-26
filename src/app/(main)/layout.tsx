@@ -25,7 +25,7 @@ export default function MainLayout({
       {/* Header */}
       <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-lg">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
-          <Link href="/ask" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
+          <Link href="/" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-lg shadow-sm">
               ⚖️
             </div>
