@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { UserButton } from "@clerk/nextjs";
+import { TermsModal } from "@/components/TermsModal";
 
 const tabs = [
   { name: "Ask", href: "/ask", icon: "💬" },
@@ -19,6 +20,7 @@ export default function MainLayout({
 
   return (
     <div className="flex min-h-screen flex-col">
+      <TermsModal />
       <header className="sticky top-0 z-50 border-b border-gray-200 bg-white">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
           <Link href="/ask" className="flex items-center gap-2">
