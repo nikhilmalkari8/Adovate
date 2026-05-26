@@ -5,7 +5,9 @@ import ReactMarkdown from "react-markdown";
 import { SourceBadge } from "@/components/SourceBadge";
 import {
   getUserPreferences,
+  setUserPreferences,
   EXPLANATION_STYLE_OPTIONS,
+  ANSWER_LANGUAGE_OPTIONS,
   type UserPreferences,
 } from "@/lib/user-preferences";
 import {
@@ -38,6 +40,7 @@ export default function AskPage() {
   const [sessionId, setSessionId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
   const [preferences, setPreferences] = useState<UserPreferences>(getUserPreferences());
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
@@ -285,27 +288,80 @@ export default function AskPage() {
     EXPLANATION_STYLE_OPTIONS.find((o) => o.value === preferences.explanationStyle)?.label ??
     "Standard";
 
+  const languageLabel =
+    ANSWER_LANGUAGE_OPTIONS.find((o) => o.value === preferences.answerLanguage)?.label ??
+    "English";
+
+  const updatePreferences = (partial: Partial<UserPreferences>) => {
+    setPreferences(setUserPreferences(partial));
+  };
+
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col bg-[var(--background)]">
       {/* Toolbar */}
-      <div className="flex items-center justify-between border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 border-b border-[var(--border)] bg-[var(--surface)] px-4 py-2">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setShowHistory(true)}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-gray-100"
+            >
+              📋 History
+            </button>
+            <button
+              onClick={handleNewChat}
+              className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--primary)] hover:bg-[var(--primary)]/5"
+            >
+              + New chat
+            </button>
+          </div>
           <button
-            onClick={() => setShowHistory(true)}
+            onClick={() => setShowSettings((s) => !s)}
             className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--foreground)] hover:bg-gray-100"
           >
-            📋 History
-          </button>
-          <button
-            onClick={handleNewChat}
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--primary)] hover:bg-[var(--primary)]/5"
-          >
-            + New chat
+            ⚙️ {styleLabel} · {languageLabel.split(" ")[0]}
           </button>
         </div>
-        <span className="text-xs text-[var(--muted)]">
-          Style: {styleLabel} · Change in Profile
-        </span>
+
+        {showSettings && (
+          <div className="animate-fade-in rounded-xl border border-[var(--border)] bg-gray-50 p-3">
+            <p className="mb-2 text-xs font-medium text-[var(--muted)]">Explanation style</p>
+            <div className="flex flex-wrap gap-2">
+              {EXPLANATION_STYLE_OPTIONS.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => updatePreferences({ explanationStyle: opt.value })}
+                  className={`rounded-full px-3 py-1.5 text-sm font-medium transition-colors ${
+                    preferences.explanationStyle === opt.value
+                      ? "bg-[var(--primary)] text-white"
+                      : "bg-white text-[var(--foreground)] border border-[var(--border)] hover:border-[var(--primary)]"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+            <p className="mb-2 mt-3 text-xs font-medium text-[var(--muted)]">Answer language</p>
+            <select
+              value={preferences.answerLanguage}
+              onChange={(e) =>
+                updatePreferences({
+                  answerLanguage: e.target.value as UserPreferences["answerLanguage"],
+                })
+              }
+              className="w-full rounded-lg border border-[var(--border)] bg-white px-3 py-2 text-sm"
+            >
+              {ANSWER_LANGUAGE_OPTIONS.map((lang) => (
+                <option key={lang.value} value={lang.value}>
+                  {lang.label}
+                </option>
+              ))}
+            </select>
+            <p className="mt-2 text-xs text-[var(--muted)]">
+              Start a new question after changing settings to see the difference clearly.
+            </p>
+          </div>
+        )}
       </div>
 
       {/* History drawer */}
