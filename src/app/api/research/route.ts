@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from 'next/server'
+import { NextRequest } from 'next/server'
 import { openai, MODEL } from '@/lib/openai'
 import { lookupSection, searchActs } from '@/lib/acts/lookup'
 
@@ -9,16 +9,17 @@ interface Message {
 
 export async function POST(request: NextRequest) {
   try {
-    const { question, history = [] } = await request.json() as { 
+    const { question, history = [], stream = false } = await request.json() as { 
       question: string
       history?: Message[]
+      stream?: boolean
     }
 
     if (!question || typeof question !== 'string') {
-      return NextResponse.json(
-        { error: 'Question is required' },
-        { status: 400 }
-      )
+      return new Response(JSON.stringify({ error: 'Question is required' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
     }
 
     const sectionMatch = question.match(/(?:article|section|sec\.?)\s*(\d+[a-zA-Z]?)/i)
@@ -90,15 +91,53 @@ At the end of your response, suggest 2-3 natural follow-up questions they might 
       { role: 'system', content: systemPrompt },
     ]
 
-    // Add conversation history for context (last 6 messages max)
     const recentHistory = history.slice(-6)
     for (const msg of recentHistory) {
       messages.push({ role: msg.role, content: msg.content })
     }
-
-    // Add current question
     messages.push({ role: 'user', content: question })
 
+    // Streaming response
+    if (stream) {
+      const streamResponse = await openai.chat.completions.create({
+        model: MODEL,
+        messages,
+        temperature: 0.75,
+        max_tokens: 2000,
+        stream: true,
+      })
+
+      const encoder = new TextEncoder()
+      
+      const readableStream = new ReadableStream({
+        async start(controller) {
+          // Send citations first
+          if (citations.length > 0) {
+            controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'citations', citations })}\n\n`))
+          }
+
+          for await (const chunk of streamResponse) {
+            const content = chunk.choices[0]?.delta?.content || ''
+            if (content) {
+              controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'content', content })}\n\n`))
+            }
+          }
+          
+          controller.enqueue(encoder.encode(`data: ${JSON.stringify({ type: 'done' })}\n\n`))
+          controller.close()
+        },
+      })
+
+      return new Response(readableStream, {
+        headers: {
+          'Content-Type': 'text/event-stream',
+          'Cache-Control': 'no-cache',
+          'Connection': 'keep-alive',
+        },
+      })
+    }
+
+    // Non-streaming response (fallback)
     const completion = await openai.chat.completions.create({
       model: MODEL,
       messages,
@@ -108,7 +147,6 @@ At the end of your response, suggest 2-3 natural follow-up questions they might 
 
     const fullResponse = completion.choices[0]?.message?.content || 'Unable to generate response.'
     
-    // Extract follow-up suggestions if present
     const lines = fullResponse.split('\n')
     const suggestions: string[] = []
     const answerLines: string[] = []
@@ -123,16 +161,18 @@ At the end of your response, suggest 2-3 natural follow-up questions they might 
 
     const answer = answerLines.join('\n').trim()
 
-    return NextResponse.json({
+    return new Response(JSON.stringify({
       answer,
       citations: citations.length > 0 ? citations : undefined,
       suggestions: suggestions.length > 0 ? suggestions : undefined,
+    }), {
+      headers: { 'Content-Type': 'application/json' },
     })
   } catch (error) {
     console.error('Research API error:', error)
-    return NextResponse.json(
-      { error: 'Failed to process question' },
-      { status: 500 }
-    )
+    return new Response(JSON.stringify({ error: 'Failed to process question' }), {
+      status: 500,
+      headers: { 'Content-Type': 'application/json' },
+    })
   }
 }

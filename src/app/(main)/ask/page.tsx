@@ -9,6 +9,7 @@ interface Message {
   content: string;
   citations?: string[];
   suggestions?: string[];
+  isStreaming?: boolean;
 }
 
 const sampleQuestions = [
@@ -44,12 +45,24 @@ export default function AskPage() {
       content: question.trim(),
     };
 
+    const assistantMessageId = (Date.now() + 1).toString();
+    
     setMessages((prev) => [...prev, userMessage]);
     setInput("");
     setIsLoading(true);
 
+    // Add empty assistant message for streaming
+    setMessages((prev) => [
+      ...prev,
+      {
+        id: assistantMessageId,
+        role: "assistant",
+        content: "",
+        isStreaming: true,
+      },
+    ]);
+
     try {
-      // Prepare history for context
       const history = messages.map((m) => ({
         role: m.role,
         content: m.content,
@@ -61,29 +74,93 @@ export default function AskPage() {
         body: JSON.stringify({ 
           question: userMessage.content,
           history,
+          stream: true,
         }),
       });
 
-      const data = await response.json();
+      if (!response.ok) throw new Error("Failed to fetch");
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content: data.answer || "I couldn't process that. Could you try rephrasing?",
-        citations: data.citations,
-        suggestions: data.suggestions,
-      };
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No reader");
 
-      setMessages((prev) => [...prev, assistantMessage]);
-    } catch {
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: (Date.now() + 1).toString(),
-          role: "assistant",
-          content: "Something went wrong. Please try again.",
-        },
-      ]);
+      const decoder = new TextDecoder();
+      let fullContent = "";
+      let citations: string[] = [];
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const chunk = decoder.decode(value);
+        const lines = chunk.split("\n");
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              
+              if (data.type === "citations") {
+                citations = data.citations;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId ? { ...m, citations } : m
+                  )
+                );
+              } else if (data.type === "content") {
+                fullContent += data.content;
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? { ...m, content: fullContent }
+                      : m
+                  )
+                );
+              } else if (data.type === "done") {
+                // Parse suggestions from content
+                const lines = fullContent.split("\n");
+                const suggestions: string[] = [];
+                const answerLines: string[] = [];
+
+                for (const line of lines) {
+                  if (line.trim().startsWith("→")) {
+                    suggestions.push(line.trim().substring(1).trim());
+                  } else {
+                    answerLines.push(line);
+                  }
+                }
+
+                setMessages((prev) =>
+                  prev.map((m) =>
+                    m.id === assistantMessageId
+                      ? {
+                          ...m,
+                          content: answerLines.join("\n").trim(),
+                          suggestions: suggestions.length > 0 ? suggestions : undefined,
+                          isStreaming: false,
+                        }
+                      : m
+                  )
+                );
+              }
+            } catch {
+              // Ignore parse errors
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error("Stream error:", error);
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === assistantMessageId
+            ? {
+                ...m,
+                content: "Something went wrong. Please try again.",
+                isStreaming: false,
+              }
+            : m
+        )
+      );
     } finally {
       setIsLoading(false);
     }
@@ -102,7 +179,7 @@ export default function AskPage() {
   };
 
   const lastMessage = messages[messages.length - 1];
-  const showSuggestions = lastMessage?.role === "assistant" && lastMessage?.suggestions?.length;
+  const showSuggestions = lastMessage?.role === "assistant" && !lastMessage?.isStreaming && lastMessage?.suggestions?.length;
 
   return (
     <div className="flex h-[calc(100vh-8rem)] flex-col bg-[var(--background)]">
@@ -196,23 +273,33 @@ export default function AskPage() {
                       </p>
                     ) : (
                       <div className="text-[15px] leading-relaxed">
-                        <ReactMarkdown
-                          components={{
-                            h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
-                            h2: ({ children }) => <h2 className="text-lg font-bold mt-4 mb-2">{children}</h2>,
-                            h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2">{children}</h3>,
-                            p: ({ children }) => <p className="my-2">{children}</p>,
-                            ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>,
-                            ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>,
-                            li: ({ children }) => <li>{children}</li>,
-                            strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
-                            em: ({ children }) => <em className="italic">{children}</em>,
-                            code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
-                            blockquote: ({ children }) => <blockquote className="border-l-4 border-[var(--primary)] pl-4 my-3 italic text-[var(--muted)]">{children}</blockquote>,
-                          }}
-                        >
-                          {message.content}
-                        </ReactMarkdown>
+                        {message.content ? (
+                          <ReactMarkdown
+                            components={{
+                              h1: ({ children }) => <h1 className="text-xl font-bold mt-4 mb-2">{children}</h1>,
+                              h2: ({ children }) => <h2 className="text-lg font-bold mt-4 mb-2">{children}</h2>,
+                              h3: ({ children }) => <h3 className="text-base font-semibold mt-3 mb-2">{children}</h3>,
+                              p: ({ children }) => <p className="my-2">{children}</p>,
+                              ul: ({ children }) => <ul className="list-disc pl-5 my-2 space-y-1">{children}</ul>,
+                              ol: ({ children }) => <ol className="list-decimal pl-5 my-2 space-y-1">{children}</ol>,
+                              li: ({ children }) => <li>{children}</li>,
+                              strong: ({ children }) => <strong className="font-semibold">{children}</strong>,
+                              em: ({ children }) => <em className="italic">{children}</em>,
+                              code: ({ children }) => <code className="bg-gray-100 px-1.5 py-0.5 rounded text-sm font-mono">{children}</code>,
+                              blockquote: ({ children }) => <blockquote className="border-l-4 border-[var(--primary)] pl-4 my-3 italic text-[var(--muted)]">{children}</blockquote>,
+                            }}
+                          >
+                            {message.content}
+                          </ReactMarkdown>
+                        ) : (
+                          <div className="flex items-center gap-2">
+                            <div className="h-2 w-2 animate-pulse rounded-full bg-[var(--primary)]" />
+                            <span className="text-[var(--muted)]">Thinking...</span>
+                          </div>
+                        )}
+                        {message.isStreaming && message.content && (
+                          <span className="inline-block w-2 h-5 ml-1 bg-[var(--primary)] animate-pulse" />
+                        )}
                       </div>
                     )}
                     {message.citations && message.citations.length > 0 && (
@@ -232,7 +319,7 @@ export default function AskPage() {
               ))}
 
               {/* Follow-up Suggestions */}
-              {showSuggestions && !isLoading && (
+              {showSuggestions && (
                 <div className="animate-fade-in pl-11">
                   <p className="mb-2 text-xs font-medium text-[var(--muted)]">Continue exploring:</p>
                   <div className="flex flex-wrap gap-2">
@@ -249,23 +336,6 @@ export default function AskPage() {
                 </div>
               )}
 
-              {isLoading && (
-                <div className="flex justify-start animate-fade-in">
-                  <div className="mr-3 flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-sm">
-                    ⚖️
-                  </div>
-                  <div className="rounded-2xl bg-[var(--surface)] px-5 py-4 shadow-sm">
-                    <div className="flex items-center gap-3">
-                      <div className="flex space-x-1">
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "0ms" }} />
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "150ms" }} />
-                        <div className="h-2 w-2 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "300ms" }} />
-                      </div>
-                      <span className="text-sm text-[var(--muted)]">Thinking...</span>
-                    </div>
-                  </div>
-                </div>
-              )}
               <div ref={messagesEndRef} />
             </div>
           </div>
