@@ -9,11 +9,21 @@ interface Message {
   citations?: string[];
 }
 
+const sampleQuestions = [
+  { label: "Article 21", query: "What does Article 21 of the Constitution say?" },
+  { label: "Section 302 IPC", query: "Explain Section 302 of IPC" },
+  { label: "Bail Process", query: "What is the procedure for bail in criminal cases?" },
+  { label: "Writ Petition", query: "How to file a writ petition?" },
+  { label: "Section 498A", query: "Explain Section 498A IPC" },
+  { label: "Fundamental Rights", query: "What are the fundamental rights in India?" },
+];
+
 export default function AskPage() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -23,14 +33,13 @@ export default function AskPage() {
     scrollToBottom();
   }, [messages]);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || isLoading) return;
+  const handleSubmit = async (question: string) => {
+    if (!question.trim() || isLoading) return;
 
     const userMessage: Message = {
       id: Date.now().toString(),
       role: "user",
-      content: input.trim(),
+      content: question.trim(),
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -68,108 +77,164 @@ export default function AskPage() {
     }
   };
 
-  return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col">
-      <div className="border-b bg-white p-4">
-        <h1 className="text-xl font-semibold text-gray-900">Ask Legal Questions</h1>
-        <p className="text-sm text-gray-500">
-          Ask about Indian Constitution, Acts, Sections, and Legal Procedures
-        </p>
-      </div>
+  const handleFormSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    handleSubmit(input);
+  };
 
-      <div className="flex-1 overflow-y-auto p-4 pb-20">
-        {messages.length === 0 ? (
-          <div className="flex h-full items-center justify-center">
-            <div className="max-w-md text-center">
-              <div className="mb-4 text-5xl">⚖️</div>
-              <h2 className="mb-2 text-xl font-semibold text-gray-900">
-                Welcome to Legal Research
-              </h2>
-              <p className="mb-6 text-gray-600">
-                Ask any question about Indian law, constitutional provisions, or legal procedures.
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      handleSubmit(input);
+    }
+  };
+
+  return (
+    <div className="flex h-[calc(100vh-8rem)] flex-col bg-[var(--background)]">
+      {messages.length === 0 ? (
+        <div className="flex flex-1 flex-col items-center justify-center px-4 py-8 animate-fade-in">
+          <div className="w-full max-w-2xl">
+            {/* Hero Section */}
+            <div className="mb-8 text-center">
+              <div className="mb-4 inline-flex h-20 w-20 items-center justify-center rounded-2xl bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-4xl shadow-lg">
+                ⚖️
+              </div>
+              <h1 className="mb-2 text-2xl font-bold text-[var(--foreground)]">
+                Legal Research Assistant
+              </h1>
+              <p className="text-[var(--muted)]">
+                Ask any question about Indian law, Constitution, IPC, CrPC, and more
               </p>
-              <div className="space-y-2 text-left text-sm text-gray-500">
-                <p className="rounded-lg bg-gray-100 p-3">
-                  &quot;What does Article 21 of the Constitution say?&quot;
-                </p>
-                <p className="rounded-lg bg-gray-100 p-3">
-                  &quot;Explain Section 302 of IPC&quot;
-                </p>
-                <p className="rounded-lg bg-gray-100 p-3">
-                  &quot;What is the procedure for filing a writ petition?&quot;
-                </p>
+            </div>
+
+            {/* Input Section */}
+            <div className="mb-8">
+              <form onSubmit={handleFormSubmit} className="relative">
+                <textarea
+                  ref={inputRef}
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  onKeyDown={handleKeyDown}
+                  placeholder="Ask a legal question..."
+                  rows={3}
+                  className="w-full resize-none rounded-2xl border-2 border-[var(--border)] bg-[var(--surface)] px-5 py-4 pr-14 text-lg text-[var(--foreground)] placeholder-[var(--muted)] shadow-sm transition-all focus:border-[var(--primary)] focus:outline-none focus:ring-4 focus:ring-[var(--primary)]/10"
+                />
+                <button
+                  type="submit"
+                  disabled={isLoading || !input.trim()}
+                  className="absolute bottom-4 right-4 flex h-10 w-10 items-center justify-center rounded-xl bg-[var(--primary)] text-white shadow-md transition-all hover:bg-[var(--primary-dark)] hover:shadow-lg disabled:bg-gray-300 disabled:shadow-none"
+                >
+                  <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                  </svg>
+                </button>
+              </form>
+            </div>
+
+            {/* Sample Questions */}
+            <div>
+              <p className="mb-3 text-center text-sm font-medium text-[var(--muted)]">
+                Try these questions
+              </p>
+              <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+                {sampleQuestions.map((q, idx) => (
+                  <button
+                    key={idx}
+                    onClick={() => handleSubmit(q.query)}
+                    className="rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-4 py-3 text-sm font-medium text-[var(--foreground)] shadow-sm transition-all hover:border-[var(--primary)] hover:bg-[var(--primary)]/5 hover:shadow-md active:scale-[0.98]"
+                  >
+                    {q.label}
+                  </button>
+                ))}
               </div>
             </div>
           </div>
-        ) : (
-          <div className="mx-auto max-w-3xl space-y-4">
-            {messages.map((message) => (
-              <div
-                key={message.id}
-                className={`flex ${
-                  message.role === "user" ? "justify-end" : "justify-start"
-                }`}
-              >
+        </div>
+      ) : (
+        <>
+          {/* Messages */}
+          <div className="flex-1 overflow-y-auto px-4 py-6 pb-32">
+            <div className="mx-auto max-w-3xl space-y-6">
+              {messages.map((message, idx) => (
                 <div
-                  className={`max-w-[80%] rounded-2xl px-4 py-3 ${
-                    message.role === "user"
-                      ? "bg-blue-600 text-white"
-                      : "bg-white text-gray-900 shadow-sm border"
+                  key={message.id}
+                  className={`flex animate-slide-up ${
+                    message.role === "user" ? "justify-end" : "justify-start"
                   }`}
+                  style={{ animationDelay: `${idx * 50}ms` }}
                 >
-                  <p className="whitespace-pre-wrap">{message.content}</p>
-                  {message.citations && message.citations.length > 0 && (
-                    <div className="mt-3 border-t border-gray-200 pt-2">
-                      <p className="text-xs font-medium text-gray-500">
-                        References:
-                      </p>
-                      <ul className="mt-1 space-y-1">
-                        {message.citations.map((citation, idx) => (
-                          <li key={idx} className="text-xs text-gray-600">
-                            • {citation}
-                          </li>
-                        ))}
-                      </ul>
-                    </div>
-                  )}
-                </div>
-              </div>
-            ))}
-            {isLoading && (
-              <div className="flex justify-start">
-                <div className="rounded-2xl bg-white px-4 py-3 shadow-sm border">
-                  <div className="flex space-x-2">
-                    <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "0ms" }} />
-                    <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "150ms" }} />
-                    <div className="h-2 w-2 animate-bounce rounded-full bg-gray-400" style={{ animationDelay: "300ms" }} />
+                  <div
+                    className={`max-w-[85%] rounded-2xl px-5 py-4 shadow-sm ${
+                      message.role === "user"
+                        ? "bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-white"
+                        : "border border-[var(--border)] bg-[var(--surface)] text-[var(--foreground)]"
+                    }`}
+                  >
+                    <p className="whitespace-pre-wrap text-[15px] leading-relaxed">
+                      {message.content}
+                    </p>
+                    {message.citations && message.citations.length > 0 && (
+                      <div className="mt-4 border-t border-white/20 pt-3">
+                        <p className="mb-2 text-xs font-semibold uppercase tracking-wide opacity-70">
+                          References
+                        </p>
+                        <div className="flex flex-wrap gap-2">
+                          {message.citations.map((citation, idx) => (
+                            <span
+                              key={idx}
+                              className="inline-flex items-center rounded-lg bg-[var(--accent)]/20 px-2.5 py-1 text-xs font-medium text-[var(--accent)]"
+                            >
+                              📜 {citation}
+                            </span>
+                          ))}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </div>
-            )}
-            <div ref={messagesEndRef} />
+              ))}
+              {isLoading && (
+                <div className="flex justify-start animate-fade-in">
+                  <div className="rounded-2xl border border-[var(--border)] bg-[var(--surface)] px-5 py-4 shadow-sm">
+                    <div className="flex items-center gap-3">
+                      <div className="flex space-x-1.5">
+                        <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "0ms" }} />
+                        <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "150ms" }} />
+                        <div className="h-2.5 w-2.5 animate-bounce rounded-full bg-[var(--primary)]" style={{ animationDelay: "300ms" }} />
+                      </div>
+                      <span className="text-sm text-[var(--muted)]">Researching...</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+              <div ref={messagesEndRef} />
+            </div>
           </div>
-        )}
-      </div>
 
-      <div className="fixed bottom-16 left-0 right-0 border-t bg-white p-4">
-        <form onSubmit={handleSubmit} className="mx-auto flex max-w-3xl gap-2">
-          <input
-            type="text"
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            placeholder="Ask a legal question..."
-            className="flex-1 rounded-full border border-gray-300 px-4 py-3 text-gray-900 placeholder-gray-500 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500"
-            disabled={isLoading}
-          />
-          <button
-            type="submit"
-            disabled={isLoading || !input.trim()}
-            className="rounded-full bg-blue-600 px-6 py-3 font-medium text-white transition-colors hover:bg-blue-700 disabled:bg-gray-300 disabled:cursor-not-allowed"
-          >
-            Send
-          </button>
-        </form>
-      </div>
+          {/* Input Bar */}
+          <div className="fixed bottom-16 left-0 right-0 border-t border-[var(--border)] bg-[var(--surface)]/95 p-4 backdrop-blur-lg">
+            <form onSubmit={handleFormSubmit} className="mx-auto flex max-w-3xl gap-3">
+              <input
+                type="text"
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask another question..."
+                className="flex-1 rounded-xl border-2 border-[var(--border)] bg-[var(--surface)] px-5 py-3.5 text-[var(--foreground)] placeholder-[var(--muted)] transition-all focus:border-[var(--primary)] focus:outline-none focus:ring-4 focus:ring-[var(--primary)]/10"
+                disabled={isLoading}
+              />
+              <button
+                type="submit"
+                disabled={isLoading || !input.trim()}
+                className="flex items-center justify-center rounded-xl bg-[var(--primary)] px-6 py-3.5 font-semibold text-white shadow-md transition-all hover:bg-[var(--primary-dark)] hover:shadow-lg disabled:bg-gray-300 disabled:shadow-none"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" />
+                </svg>
+              </button>
+            </form>
+          </div>
+        </>
+      )}
     </div>
   );
 }

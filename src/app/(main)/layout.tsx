@@ -7,7 +7,7 @@ import { TermsModal } from "@/components/TermsModal";
 
 const tabs = [
   { name: "Ask", href: "/ask", icon: "💬" },
-  { name: "My Case", href: "/my-case", icon: "📁" },
+  { name: "Cases", href: "/my-case", icon: "📁" },
   { name: "Profile", href: "/profile", icon: "👤" },
 ];
 
@@ -19,36 +19,55 @@ export default function MainLayout({
   const pathname = usePathname();
 
   return (
-    <div className="flex min-h-screen flex-col">
+    <div className="flex min-h-screen flex-col bg-[var(--background)]">
       <TermsModal />
-      <header className="sticky top-0 z-50 border-b border-gray-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-4">
-          <Link href="/ask" className="flex items-center gap-2">
-            <span className="text-2xl">⚖️</span>
-            <span className="text-xl font-bold text-gray-900">Advocate</span>
+      
+      {/* Header */}
+      <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-lg">
+        <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
+          <Link href="/ask" className="flex items-center gap-2.5 transition-opacity hover:opacity-80">
+            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-gradient-to-br from-[var(--primary)] to-[var(--primary-dark)] text-lg shadow-sm">
+              ⚖️
+            </div>
+            <span className="text-lg font-bold text-[var(--foreground)]">Nyay</span>
           </Link>
-          <UserButton />
+          <UserButton 
+            appearance={{
+              elements: {
+                avatarBox: "h-9 w-9",
+              },
+            }}
+          />
         </div>
       </header>
 
+      {/* Main Content */}
       <main className="flex-1">{children}</main>
 
-      <nav className="fixed bottom-0 left-0 right-0 border-t border-gray-200 bg-white">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-around">
+      {/* Bottom Navigation */}
+      <nav className="fixed bottom-0 left-0 right-0 border-t border-[var(--border)] bg-[var(--surface)]/95 backdrop-blur-lg">
+        <div className="mx-auto flex h-16 max-w-md items-center justify-around px-6">
           {tabs.map((tab) => {
             const isActive = pathname.startsWith(tab.href);
             return (
               <Link
                 key={tab.name}
                 href={tab.href}
-                className={`flex flex-col items-center gap-1 px-4 py-2 text-sm transition-colors ${
+                className={`flex flex-col items-center gap-1 rounded-xl px-5 py-2 transition-all ${
                   isActive
-                    ? "text-blue-600"
-                    : "text-gray-500 hover:text-gray-900"
+                    ? "text-[var(--primary)]"
+                    : "text-[var(--muted)] hover:text-[var(--foreground)]"
                 }`}
               >
-                <span className="text-xl">{tab.icon}</span>
-                <span className={isActive ? "font-medium" : ""}>{tab.name}</span>
+                <span className={`text-xl transition-transform ${isActive ? "scale-110" : ""}`}>
+                  {tab.icon}
+                </span>
+                <span className={`text-xs ${isActive ? "font-semibold" : "font-medium"}`}>
+                  {tab.name}
+                </span>
+                {isActive && (
+                  <div className="absolute -bottom-0 h-0.5 w-8 rounded-full bg-[var(--primary)]" />
+                )}
               </Link>
             );
           })}
